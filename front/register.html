@@ -21,22 +21,28 @@
                 </nav>
             </aside>
 
-            <!-- 右サイド コンテンツ枠（ダミー） -->
+            <!-- 右サイド コンテンツ枠（Vue.jsで実装） -->
             <main class="col-12 col-md-9 col-lg-10 p-4">
                 <div class="card shadow-sm">
                     <div class="card-header">コンテンツ</div>
-                    <div class="card-body">
-                        <h5 class="card-title mb-3">登録フォーム（ダミー）</h5>
-                        <form>
+                    <div id="app" class="card-body">
+                        <h5 class="card-title mb-3">登録フォーム</h5>
+
+                        <!-- 成功メッセージ -->
+                        <div v-if="successMessage" class="alert alert-success" role="alert">
+                            {{ successMessage }}
+                        </div>
+                        <!-- エラーメッセージ -->
+                        <div v-if="errorMessage" class="alert alert-danger" role="alert">
+                            {{ errorMessage }}
+                        </div>
+
+                        <form @submit.prevent="submitForm">
                             <div class="row g-3">
-                                <div class="col-sm-4">
-                                    <label for="inputId" class="form-label">ID</label>
-                                    <input type="number" class="form-control" id="inputId" placeholder="例: 11" disabled>
-                                </div>
-                                <div class="col-sm-4">
+                                <div class="col-sm-6">
                                     <label for="inputCategory" class="form-label">カテゴリー</label>
-                                    <select id="inputCategory" class="form-select" disabled>
-                                        <option selected>選択...</option>
+                                    <select id="inputCategory" class="form-select" v-model="form.category" required>
+                                        <option disabled value="">選択...</option>
                                         <option>食費</option>
                                         <option>交通</option>
                                         <option>住居</option>
@@ -49,16 +55,20 @@
                                         <option>その他</option>
                                     </select>
                                 </div>
-                                <div class="col-sm-4">
+                                <div class="col-sm-6">
                                     <label for="inputAmount" class="form-label">金額</label>
                                     <div class="input-group">
                                         <span class="input-group-text">¥</span>
-                                        <input type="text" class="form-control" id="inputAmount" placeholder="0" disabled>
+                                        <input type="number" min="0" step="1" class="form-control" id="inputAmount" placeholder="0" v-model.number="form.amount" required>
                                     </div>
                                 </div>
                             </div>
-                            <div class="mt-4">
-                                <button type="button" class="btn btn-primary" disabled>登録（ダミー）</button>
+                            <div class="mt-4 d-flex gap-2">
+                                <button type="submit" class="btn btn-primary" :disabled="loading">
+                                    <span v-if="loading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    登録
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" @click="resetForm" :disabled="loading">リセット</button>
                             </div>
                         </form>
                     </div>
@@ -66,5 +76,66 @@
             </main>
         </div>
     </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    form: {
+                        category: '',
+                        amount: null
+                    },
+                    loading: false,
+                    successMessage: '',
+                    errorMessage: ''
+                }
+            },
+            methods: {
+                async submitForm() {
+                    this.successMessage = '';
+                    this.errorMessage = '';
+
+                    // 入力バリデーション（簡易）
+                    if (!this.form.category || this.form.amount === null || this.form.amount === '' || isNaN(this.form.amount)) {
+                        this.errorMessage = 'カテゴリーと金額を入力してください。';
+                        return;
+                    }
+
+                    this.loading = true;
+                    try {
+                        const res = await fetch('http://localhost:8080/expense/register', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                category: this.form.category,
+                                amount: this.form.amount
+                            })
+                        });
+
+                        if (res.ok) {
+                            this.successMessage = '登録が完了しました';
+                            this.resetForm();
+                        } else {
+                            const text = await res.text();
+                            this.errorMessage = text || `エラーが発生しました (HTTP ${res.status})`;
+                        }
+                    } catch (e) {
+                        this.errorMessage = '通信に失敗しました。サーバーが起動しているか確認してください。';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                resetForm() {
+                    this.form.category = '';
+                    this.form.amount = null;
+                }
+            }
+        }).mount('#app');
+    </script>
 </body>
 </html>
