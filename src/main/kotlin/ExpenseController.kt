@@ -48,8 +48,35 @@ class ExpenseController {
                     call.respondText(json, ContentType.Application.Json)
                 }
 
+                // CSRFトークン発行（Double Submit Cookie方式）
+                get("/csrf/token") {
+                    val cookieName = "XSRF-TOKEN"
+                    val existing = call.request.cookies[cookieName]
+                    val token = existing ?: java.util.UUID.randomUUID().toString()
+                    call.response.cookies.append(
+                        Cookie(
+                            name = cookieName,
+                            value = token,
+                            httpOnly = false, // JSから読み込める（Double Submit Cookie方式）
+                            secure = false,   // ローカルHTTPのためfalse。本番はtrue推奨
+                            path = "/",
+                            maxAge = 60 * 60, // 1h
+                            extensions = mapOf("SameSite" to "Lax")
+                        )
+                    )
+                    call.respondText("{" + "\"token\":" + "\"$token\"" + "}", ContentType.Application.Json)
+                }
+
                 // /expense/register: JSONを受け取り、内容をそのまま返す（エコー）
                 post("/expense/register") {
+                    // CSRF検証（Double Submit Cookie）
+                    val cookieToken = call.request.cookies["XSRF-TOKEN"]
+                    val headerToken = call.request.headers["X-XSRF-TOKEN"]
+                    if (cookieToken.isNullOrBlank() || headerToken.isNullOrBlank() || cookieToken != headerToken) {
+                        call.respond(HttpStatusCode.Forbidden, "{\"error\":\"invalid csrf token\"}")
+                        return@post
+                    }
+
                     val body = call.receiveText()
                     // caretegory(typo)にも対応: 両方見てcategoryに正規化
                     val obj = runCatching { gson.fromJson(body, JsonObject::class.java) }.getOrNull()
@@ -58,7 +85,14 @@ class ExpenseController {
                         return@post
                     }
                     val category = (obj.get("category") ?: obj.get("caretegory"))?.asString
-                    val money = obj.get("money")?.asString ?: obj.get("money")?.asNumber?.toString()
+                    // amount でも money でも受け付ける
+                    val moneyNode = obj.get("money") ?: obj.get("amount")
+                    val money = when {
+                        moneyNode == null -> null
+                        moneyNode.isJsonPrimitive && moneyNode.asJsonPrimitive.isNumber -> moneyNode.asNumber.toString()
+                        moneyNode.isJsonPrimitive -> moneyNode.asString
+                        else -> null
+                    }
 
                     if (category.isNullOrBlank() || money.isNullOrBlank()) {
                         call.respond(HttpStatusCode.BadRequest, "{\"error\":\"category and money are required\"}")

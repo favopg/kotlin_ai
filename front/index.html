@@ -28,31 +28,36 @@
                 <div class="card shadow-sm">
                     <div class="card-header">コンテンツ</div>
                     <div id="app" class="card-body">
-                        <!-- 円グラフ（右サイドコンテンツの一番上） -->
-                        <div class="mb-4">
-                            <h5 class="card-title mb-2">円グラフ</h5>
-                            <div class="ratio ratio-1x1" style="max-width: 420px;">
-                                <canvas id="categoryPieChart" aria-label="カテゴリー別支出円グラフ" role="img"></canvas>
+                        <div v-if="hasData">
+                            <!-- 円グラフ（右サイドコンテンツの一番上） -->
+                            <div class="mb-4">
+                                <h5 class="card-title mb-2">円グラフ</h5>
+                                <div class="ratio ratio-1x1" style="max-width: 420px;">
+                                    <canvas id="categoryPieChart" aria-label="カテゴリー別支出円グラフ" role="img"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th scope="col">ID</th>
+                                            <th scope="col">カテゴリー</th>
+                                            <th scope="col">金額</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in items" :key="item.id">
+                                            <td><a :href="'#' + item.id">{{ item.id }}</a></td>
+                                            <td>{{ item.category }}</td>
+                                            <td>{{ formatYen(item.amount) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-
-                        <div class="table-responsive">
-                            <table class="table table-sm table-striped align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th scope="col">ID</th>
-                                        <th scope="col">カテゴリー</th>
-                                        <th scope="col">金額</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="item in items" :key="item.id">
-                                        <td><a :href="'#' + item.id">{{ item.id }}</a></td>
-                                        <td>{{ item.category }}</td>
-                                        <td>{{ item.amount }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div v-else class="alert alert-info mb-0" role="alert">
+                            {{ dummyMessage }}
                         </div>
                     </div>
                 </div>
@@ -65,19 +70,14 @@
         createApp({
             data() {
                 return {
-                    items: [
-                        { id: 1, category: '食費', amount: '¥1,000' },
-                        { id: 2, category: '交通', amount: '¥2,000' },
-                        { id: 3, category: '住居', amount: '¥3,000' },
-                        { id: 4, category: '光熱費', amount: '¥4,000' },
-                        { id: 5, category: '娯楽', amount: '¥5,000' },
-                        { id: 6, category: '教育', amount: '¥6,000' },
-                        { id: 7, category: '医療', amount: '¥7,000' },
-                        { id: 8, category: '日用品', amount: '¥8,000' },
-                        { id: 9, category: '通信', amount: '¥9,000' },
-                        { id: 10, category: 'その他', amount: '¥10,000' }
-                    ],
+                    items: [],
+                    dummyMessage: 'データがありません。登録を行ってください。',
                     _chart: null
+                }
+            },
+            computed: {
+                hasData() {
+                    return Array.isArray(this.items) && this.items.length > 0;
                 }
             },
             methods: {
@@ -86,7 +86,12 @@
                     const n = String(val).replace(/[^\d.-]/g, '');
                     return Number(n || 0);
                 },
+                formatYen(val) {
+                    const num = this.parseAmount(val);
+                    return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(num);
+                },
                 buildChart() {
+                    if (!this.hasData) return;
                     const totals = {};
                     for (const it of this.items) {
                         totals[it.category] = (totals[it.category] || 0) + this.parseAmount(it.amount);
@@ -115,10 +120,36 @@
                             }
                         }
                     });
+                },
+                async fetchInit() {
+                    try {
+                        const res = await fetch('/expense/init', { headers: { 'Accept': 'application/json' } });
+                        if (!res.ok) {
+                            console.error('Failed to fetch /expense/init', res.status);
+                            this.items = [];
+                            return;
+                        }
+                        const data = await res.json();
+                        if (!Array.isArray(data) || data.length === 0) {
+                            this.items = [];
+                        } else {
+                            // Map backend {category, money} => {id, category, amount}
+                            this.items = data.map((row, idx) => ({
+                                id: idx + 1,
+                                category: row.category ?? row.Category ?? '未分類',
+                                amount: typeof row.money === 'number' ? row.money : Number(row.money || 0)
+                            }));
+                        }
+                        // Build chart if data exists
+                        this.$nextTick(() => this.buildChart());
+                    } catch (e) {
+                        console.error('Error fetching /expense/init', e);
+                        this.items = [];
+                    }
                 }
             },
             mounted() {
-                this.buildChart();
+                this.fetchInit();
             }
         }).mount('#app');
     </script>

@@ -3,6 +3,8 @@
 
 * htmlはbootstrapを使用すること
 * htmlファイルはfront直下に作成すること
+* TypeScriptはPlaywrightのテストコード以外は使用しないこと
+* Formを使用するときはCSRFを導入すること
 
 ### 画面のテストについて
 TypeScriptでPlaywrightを使用すること

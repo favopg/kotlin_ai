@@ -63,6 +63,8 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- CSRF hidden token for semantic form completeness (Double Submit Cookie uses cookie + header) -->
+                            <input type="hidden" name="_csrf" :value="csrfToken">
                             <div class="mt-4 d-flex gap-2">
                                 <button type="submit" class="btn btn-primary" :disabled="loading">
                                     <span v-if="loading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
@@ -90,10 +92,27 @@
                     },
                     loading: false,
                     successMessage: '',
-                    errorMessage: ''
+                    errorMessage: '',
+                    csrfToken: ''
                 }
             },
+            mounted() {
+                // 初回マウント時にCSRFトークンを取得（Cookieに設定される）
+                fetch('/csrf/token', { credentials: 'same-origin' })
+                    .then(() => {
+                        this.csrfToken = this.getCookie('XSRF-TOKEN') || '';
+                    })
+                    .catch(() => {
+                        // 無視（サーバ停止時など）。送信時に検出される
+                    });
+            },
             methods: {
+                getCookie(name) {
+                    const value = `; ${document.cookie}`;
+                    const parts = value.split(`; ${name}=`);
+                    if (parts.length === 2) return parts.pop().split(';').shift();
+                    return '';
+                },
                 async submitForm() {
                     this.successMessage = '';
                     this.errorMessage = '';
@@ -106,10 +125,12 @@
 
                     this.loading = true;
                     try {
-                        const res = await fetch('http://localhost:8080/expense/register', {
+                        const res = await fetch('/expense/register', {
                             method: 'POST',
+                            credentials: 'same-origin',
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/json',
+                                'X-XSRF-TOKEN': this.csrfToken || this.getCookie('XSRF-TOKEN') || ''
                             },
                             body: JSON.stringify({
                                 category: this.form.category,
